@@ -284,6 +284,5 @@ def serve_static_files(filename):
 
 if __name__ == '__main__':
     # Enable CORS for external requests
-    from flask import Flask
     app.config['DEBUG'] = False  # Disable debug in production
     app.run(host='0.0.0.0', port=5000, threaded=True)
