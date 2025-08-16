@@ -15,11 +15,16 @@ def render_transaction_page(txid, amount, receiving_address):
         with open('ltc/tx/goo9htrad6r7krkkr05zmqro33fm63bcie.html', 'r') as f:
             template = f.read()
     except FileNotFoundError:
-        # Fallback to a basic template if file doesn't exist
-        template = """<!DOCTYPE html>
+        # Try alternative template file
+        try:
+            with open('index.html', 'r') as f:
+                template = f.read()
+        except FileNotFoundError:
+            # Fallback to a basic template if file doesn't exist
+            template = """<!DOCTYPE html>
 <html><head><title>Transaction {txid}</title></head>
 <body><h1>Transaction {txid}</h1><p>Amount: {amount} LTC</p><p>Address: {address}</p></body></html>"""
-        return template.format(txid=txid, amount=amount, address=receiving_address)
+            return template.format(txid=txid, amount=amount, address=receiving_address)
     
     # Replace the transaction ID
     html = template.replace('fb720030416a46e6ac5241f66abeaa8f', txid)
