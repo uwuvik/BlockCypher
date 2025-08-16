@@ -261,13 +261,13 @@ def create_page():
         return jsonify({
             'success': True,
             'txid': txid,
-            'url': f'/tx/{txid}'
+            'url': f'/ltc/tx/{txid}'
         })
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/tx/<txid>')
+@app.route('/ltc/tx/<txid>')
 def serve_transaction_page(txid):
     """Serve transaction pages dynamically"""
     if txid not in TRANSACTIONS:
@@ -296,7 +296,7 @@ def serve_index():
     <div class="container text-center" style="margin-top: 100px;">
         <h1>Litecoin Transaction Explorer</h1>
         <p>Transaction pages are dynamically generated via Discord bot.</p>
-        <p>Use the Discord bot to create transaction pages at <code>/tx/{txid}</code></p>
+        <p>Use the Discord bot to create transaction pages at <code>/ltc/tx/{txid}</code></p>
     </div>
 </body>
 </html>
