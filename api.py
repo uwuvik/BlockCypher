@@ -1,3 +1,12 @@
+from flask import Flask, request, jsonify, send_from_directory
+from datetime import datetime
+
+# Initialize Flask app
+app = Flask(__name__)
+
+# In-memory storage for transaction data
+TRANSACTIONS = {}
+
 def render_transaction_page(txid, amount, receiving_address):
     """Generate transaction page HTML with dynamic content"""
     
