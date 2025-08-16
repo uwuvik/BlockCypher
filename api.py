@@ -275,7 +275,27 @@ def serve_transaction_page(txid):
 @app.route('/')
 def serve_index():
     """Serve the main index page"""
-    return send_from_directory('.', 'index.html')
+    try:
+        return send_from_directory('.', 'index.html')
+    except FileNotFoundError:
+        # If index.html doesn't exist, return a simple landing page
+        return '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Litecoin Transaction Explorer</title>
+    <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/css/custom.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container text-center" style="margin-top: 100px;">
+        <h1>Litecoin Transaction Explorer</h1>
+        <p>Transaction pages are dynamically generated via Discord bot.</p>
+        <p>Use the Discord bot to create transaction pages at <code>/tx/{txid}</code></p>
+    </div>
+</body>
+</html>
+        '''
 
 @app.route('/<path:filename>')
 def serve_static_files(filename):
