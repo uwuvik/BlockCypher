@@ -7,7 +7,7 @@ app = Flask(__name__)
 # In-memory storage for transaction data
 TRANSACTIONS = {}
 
-def render_transaction_page(txid, amount, receiving_address):
+def render_transaction_page(txid, amount, receiving_address, created_at=None):
     """Generate transaction page HTML with dynamic content"""
     
     # Read the template file
@@ -69,163 +69,103 @@ def render_transaction_page(txid, amount, receiving_address):
         '<span id="conf-section" class="pending">\n              <i class="fa fa-lock" style="color: #A8184F;"></i> \n              <span id="num-confs" style="color: #A8184F;">0/6</span>\n            </span>'
     )
 
+    # Convert created_at to a Unix timestamp in milliseconds for JS
+    if created_at:
+        from datetime import timezone
+        try:
+            dt = datetime.fromisoformat(created_at)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            server_start_time_ms = int(dt.timestamp() * 1000)
+        except Exception:
+            server_start_time_ms = 'Date.now()'
+    else:
+        server_start_time_ms = 'Date.now()'
+
     # Add dynamic confirmation and time update script
     confirmation_script = f'''
     <script>
-    const txId = '{txid}';
-    const maxConfirmations = 6;
-    
-    // Get stored confirmation count or start at 0
-    let currentConfirmations = parseInt(localStorage.getItem('confirmations_' + txId) || '0');
-    
-    // Get stored start time or use current time
-    const startTimeKey = 'startTime_' + txId;
-    let startTime = localStorage.getItem(startTimeKey);
-    if (!startTime) {{
-        startTime = Date.now();
-        localStorage.setItem(startTimeKey, startTime);
-    }} else {{
-        startTime = parseInt(startTime);
+    // Server-set creation time — identical for every visitor
+    const startTime = {server_start_time_ms};
+
+    const FIRST_CONF_DELAY  = 240000; // 4 minutes until 1/6
+    const CONF_INTERVAL     = 120000; // 2 minutes per step after that
+    const MAX_CONFS         = 6;
+
+    // Calculate how many confirmations should be showing right now
+    function calcConfirmations() {{
+        const elapsed = Date.now() - startTime;
+        if (elapsed < FIRST_CONF_DELAY) return 0;
+        return Math.min(MAX_CONFS, 1 + Math.floor((elapsed - FIRST_CONF_DELAY) / CONF_INTERVAL));
+    }}
+
+    // How many ms until the next confirmation tick
+    function msUntilNext(confs) {{
+        if (confs >= MAX_CONFS) return null;
+        const nextAt = confs === 0
+            ? startTime + FIRST_CONF_DELAY
+            : startTime + FIRST_CONF_DELAY + (confs * CONF_INTERVAL);
+        return Math.max(0, nextAt - Date.now());
+    }}
+
+    function applyConfirmations(n) {{
+        const confSection = document.getElementById('conf-section');
+        const numConfs    = document.getElementById('num-confs');
+        if (!confSection || !numConfs) return;
+        const lockIcon = confSection.querySelector('i');
+
+        numConfs.textContent = n + '/6';
+
+        if (n === 0) {{
+            lockIcon.style.color    = '#A8184F';
+            numConfs.style.color    = '#A8184F';
+            lockIcon.className      = 'fa fa-lock';
+            confSection.className   = 'pending';
+        }} else if (n >= MAX_CONFS) {{
+            lockIcon.style.color    = '#28a745';
+            numConfs.style.color    = '#28a745';
+            lockIcon.className      = 'fa fa-unlock';
+            confSection.className   = 'completed';
+        }} else {{
+            lockIcon.style.color    = '#ff8c00';
+            numConfs.style.color    = '#ff8c00';
+            lockIcon.className      = 'fa fa-lock';
+            confSection.className   = 'pending';
+        }}
+    }}
+
+    function tick() {{
+        const n = calcConfirmations();
+        applyConfirmations(n);
+        const wait = msUntilNext(n);
+        if (wait !== null) {{
+            setTimeout(tick, wait + 50); // +50 ms to avoid floating-point edge
+        }}
     }}
 
     function formatTimeAgo(minutes) {{
-        if (minutes === 0) {{
-            return "a few seconds ago";
-        }} else if (minutes === 1) {{
-            return "1 minute ago";
-        }} else if (minutes < 60) {{
-            return minutes + " minutes ago";
-        }} else {{
-            const hours = Math.floor(minutes / 60);
-            const remainingMinutes = minutes % 60;
-
-            if (hours === 1 && remainingMinutes === 0) {{
-                return "1 hour ago";
-            }} else if (hours === 1) {{
-                return "1 hour, " + remainingMinutes + " minute" + (remainingMinutes === 1 ? "" : "s") + " ago";
-            }} else if (remainingMinutes === 0) {{
-                return hours + " hours ago";
-            }} else {{
-                return hours + " hours, " + remainingMinutes + " minute" + (remainingMinutes === 1 ? "" : "s") + " ago";
-            }}
-        }}
+        if (minutes < 1)  return "a few seconds ago";
+        if (minutes === 1) return "1 minute ago";
+        if (minutes < 60)  return minutes + " minutes ago";
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        const hStr = h === 1 ? "1 hour" : h + " hours";
+        const mStr = m === 0 ? "" : (", " + m + " minute" + (m === 1 ? "" : "s"));
+        return hStr + mStr + " ago";
     }}
 
     function updateTime() {{
-        const timeElement = document.querySelector('time.timeago');
-        if (timeElement) {{
-            const now = Date.now();
-            const elapsedMinutes = Math.floor((now - startTime) / (1000 * 60));
-            timeElement.textContent = formatTimeAgo(elapsedMinutes);
+        const el = document.querySelector('time.timeago');
+        if (el) {{
+            const mins = Math.floor((Date.now() - startTime) / 60000);
+            el.textContent = formatTimeAgo(mins);
         }}
     }}
 
-    function updateConfirmations() {{
-        const confSection = document.getElementById('conf-section');
-        const numConfs = document.getElementById('num-confs');
-        const lockIcon = confSection.querySelector('i');
-
-        if (currentConfirmations < maxConfirmations) {{
-            currentConfirmations++;
-            localStorage.setItem('confirmations_' + txId, currentConfirmations);
-            numConfs.textContent = currentConfirmations + '/6';
-
-            if (currentConfirmations === 1) {{
-                // Orange for 1/6
-                lockIcon.style.color = '#ff8c00';
-                numConfs.style.color = '#ff8c00';
-                lockIcon.className = 'fa fa-lock';
-            }} else if (currentConfirmations >= 6) {{
-                // Green for 6/6 (completed)
-                lockIcon.style.color = '#28a745';
-                numConfs.style.color = '#28a745';
-                lockIcon.className = 'fa fa-unlock';
-                confSection.className = 'completed';
-            }} else {{
-                // Keep orange for 2-5
-                lockIcon.style.color = '#ff8c00';
-                numConfs.style.color = '#ff8c00';
-            }}
-        }}
-    }}
-
-    function initializeConfirmationDisplay() {{
-        const confSection = document.getElementById('conf-section');
-        const numConfs = document.getElementById('num-confs');
-        const lockIcon = confSection.querySelector('i');
-        
-        // Update display based on current confirmations
-        if (currentConfirmations > 0) {{
-            numConfs.textContent = currentConfirmations + '/6';
-            
-            if (currentConfirmations === 1) {{
-                lockIcon.style.color = '#ff8c00';
-                numConfs.style.color = '#ff8c00';
-                lockIcon.className = 'fa fa-lock';
-            }} else if (currentConfirmations >= 6) {{
-                lockIcon.style.color = '#28a745';
-                numConfs.style.color = '#28a745';
-                lockIcon.className = 'fa fa-unlock';
-                confSection.className = 'completed';
-            }} else {{
-                lockIcon.style.color = '#ff8c00';
-                numConfs.style.color = '#ff8c00';
-            }}
-        }}
-    }}
-
-    // Initialize displays immediately
+    // Run immediately on load
+    tick();
     updateTime();
-    initializeConfirmationDisplay();
-
-    // Update time every minute (60 seconds)
     setInterval(updateTime, 60000);
-
-    // Check if we should start confirmation progression
-    const now = Date.now();
-    const elapsedTime = now - startTime;
-    const firstConfirmationTime = 90000; // 1.5 minutes
-    
-    if (currentConfirmations === 0 && elapsedTime >= firstConfirmationTime) {{
-        // Immediately show first confirmation if enough time has passed
-        updateConfirmations();
-    }} else if (currentConfirmations === 0) {{
-        // Wait for the remaining time until first confirmation
-        const remainingTime = firstConfirmationTime - elapsedTime;
-        setTimeout(() => {{
-            updateConfirmations();
-        }}, remainingTime);
-    }}
-
-    // Set up ongoing confirmation updates
-    function scheduleNextConfirmation() {{
-        if (currentConfirmations >= maxConfirmations) return;
-        
-        const confirmationInterval = 120000; // 2 minutes
-        let nextConfirmationTime;
-        
-        if (currentConfirmations === 0) {{
-            nextConfirmationTime = startTime + firstConfirmationTime;
-        }} else {{
-            nextConfirmationTime = startTime + firstConfirmationTime + (currentConfirmations * confirmationInterval);
-        }}
-        
-        const timeUntilNext = nextConfirmationTime - now;
-        
-        if (timeUntilNext <= 0) {{
-            // Time has already passed, update immediately
-            updateConfirmations();
-            scheduleNextConfirmation();
-        }} else {{
-            // Schedule the next update
-            setTimeout(() => {{
-                updateConfirmations();
-                scheduleNextConfirmation();
-            }}, timeUntilNext);
-        }}
-    }}
-    
-    scheduleNextConfirmation();
     </script>
     '''
 
@@ -274,7 +214,7 @@ def serve_transaction_page(txid):
         return "Transaction not found", 404
     
     tx_data = TRANSACTIONS[txid]
-    html = render_transaction_page(tx_data['txid'], tx_data['amount'], tx_data['address'])
+    html = render_transaction_page(tx_data['txid'], tx_data['amount'], tx_data['address'], tx_data.get('created_at'))
     return html
 
 @app.route('/')
