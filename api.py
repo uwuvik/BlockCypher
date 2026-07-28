@@ -88,7 +88,7 @@ def render_transaction_page(txid, amount, receiving_address, created_at=None):
     // Server-set creation time — identical for every visitor
     const startTime = {server_start_time_ms};
 
-    const FIRST_CONF_DELAY  = 240000; // 4 minutes until 1/6
+    const FIRST_CONF_DELAY  = 60000; // 4 minutes until 1/6
     const CONF_INTERVAL     = 120000; // 2 minutes per step after that
     const MAX_CONFS         = 6;
 
